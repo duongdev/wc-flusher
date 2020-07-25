@@ -1,0 +1,17 @@
+{
+  "name": "wc-flusher",
+  "version": "1.0.0",
+  "description": "eWeLink controller for WC water flusher",
+  "main": "index.js",
+  "license": "MIT",
+  "scripts": {
+    "start": "env-cmd node --unhandled-rejections=strict index.js",
+    "dev": "env-cmd nodemon index.js"
+  },
+  "dependencies": {
+    "env-cmd": "^10.1.0",
+    "ewelink-api": "^3.0.0",
+    "log-timestamp": "^0.3.0",
+    "nodemon": "2.0.4"
+  }
+}
