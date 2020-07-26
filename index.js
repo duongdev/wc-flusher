@@ -1,10 +1,13 @@
 const Ewelink = require("ewelink-api");
-const fs = require("fs");
-const path = require("path");
+const express = require("express");
+const { getDb, setDb } = require("./db");
 
 require("log-timestamp");
 
 const { EMAIL, PASSWORD, REGION, DEVICE_ID, FLUSH_TIMEOUT } = process.env;
+
+const app = express();
+const port = 3000;
 
 let timeout = setTimeout(() => {}, 0);
 let socket;
@@ -15,43 +18,37 @@ const ewelink = new Ewelink({
   region: REGION,
 });
 
-const turnOffDevice = async () => {
+const setDevicePower = async (on) => {
+  const status = on ? "on" : "off";
+
   try {
-    await ewelink.setDevicePowerState(DEVICE_ID, "off");
-    resolve(true);
+    await ewelink.setDevicePowerState(DEVICE_ID, status);
+    // return true;
   } catch (error) {
-    console.log(`Couldn't turn off the device. Retrying (2/3)...`);
+    console.log(`Couldn't turn ${status} the device. Retrying (2/3)...`);
     try {
-      await ewelink.setDevicePowerState(DEVICE_ID, "off");
-      resolve(true);
+      await ewelink.setDevicePowerState(DEVICE_ID, status);
+      // return true;
     } catch (error) {
-      console.log(`Couldn't turn off the device. Retrying (3/3)...`);
+      console.log(`Couldn't turn ${status} the device. Retrying (3/3)...`);
       try {
-        await ewelink.setDevicePowerState(DEVICE_ID, "off");
-        resolve(true);
+        await ewelink.setDevicePowerState(DEVICE_ID, status);
+        // return true;
       } catch (error) {
-        console.log(`Couldn't turn off the device. Exiting...`);
+        console.log(error);
+        console.log(`Couldn't turn ${status} the device. Exiting...`);
         process.exit();
       }
     }
   }
-  fs.writeFileSync(path.resolve(__dirname, "last-turned-on.txt"), "0");
+
+  await setDb({ lastTurnedOn: 0 });
 };
 
 const handleSwitchOn = async () => {
-  let lastTurnedOn = 0;
+  const lastTurnedOn = (await getDb("lastTurnedOn")) || 0;
 
-  try {
-    lastTurnedOn = +fs.readFileSync(
-      path.resolve(__dirname, "last-turned-on.txt"),
-      { encoding: "utf-8" }
-    );
-  } catch (e) {}
-
-  fs.writeFileSync(
-    path.resolve(__dirname, "last-turned-on.txt"),
-    Date.now().toString()
-  );
+  await setDb({ lastTurnedOn: Date.now() });
 
   const TIMEOUT = Math.min(+FLUSH_TIMEOUT * 1000, Date.now() - lastTurnedOn);
 
@@ -63,7 +60,7 @@ const handleSwitchOn = async () => {
 
     timeout = setTimeout(async () => {
       console.log("Auto turned off");
-      await turnOffDevice();
+      await setDevicePower();
     }, TIMEOUT);
   });
 };
@@ -128,6 +125,8 @@ const main = async () => {
       // console.log("Turning off...");
       // await ewelink.setDevicePowerState(DEVICE_ID, "off");
       handleSwitchOn();
+    } else if (status === "off") {
+      await setDb({ lastTurnedOn: 0 });
     }
 
     await initSocket();
@@ -140,6 +139,18 @@ const main = async () => {
 };
 
 main();
+
+app.get("/toggle", async (req, res) => {
+  const status = await getStatus();
+
+  setDevicePower(status === "off");
+
+  return res.json({ status: status === "on" ? "off" : "on" });
+});
+
+app.listen(port, () => {
+  console.log(`Server is running on ${port}`);
+});
 
 process.on("SIGINT", () => {
   console.log(" - Caught SIGINT. Exiting in 3 seconds.");
